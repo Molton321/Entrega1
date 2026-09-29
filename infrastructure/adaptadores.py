@@ -1,13 +1,27 @@
+import datetime
+
 from app.ports import Notificador, ProveedorFecha
 
 
-class NotificadorEmail(Notificador):
+class NotificadorConsola(Notificador):
+    """R7: Notificación simulada imprimiendo en consola."""
+
     def enviar(self, mensaje, destinatario):
-        """Simula el envío de una notificación por correo."""
-        pass
+        print(f"[NOTIFICACION] → {destinatario.nombre}: {mensaje}")
 
 
 class ProveedorFechaSistema(ProveedorFecha):
-    def obtener_fecha_actual(self):
-        """Retorna la fecha actual del sistema."""
-        pass
+    """Entrega la fecha real del sistema."""
+
+    def hoy(self):
+        return datetime.date.today()
+
+
+class ProveedorFechaFija(ProveedorFecha):
+    """Fecha fija para el demo. Taller: fecha fija 2026-10-05."""
+
+    def __init__(self, fecha):
+        self._fecha = fecha
+
+    def hoy(self):
+        return self._fecha
