@@ -42,6 +42,10 @@ class RepositorioPrestamos(ABC):
     def listar_todos(self):
         pass
 
+    @abstractmethod
+    def listar_activos_por_estudiante(self, estudiante_id):
+        pass
+
 
 class Notificador(ABC):
     @abstractmethod
@@ -51,5 +55,6 @@ class Notificador(ABC):
 
 class ProveedorFecha(ABC):
     @abstractmethod
-    def obtener_fecha_actual(self):
+    def hoy(self):
+        """Retorna la fecha actual como datetime.date. R3, R5."""
         pass

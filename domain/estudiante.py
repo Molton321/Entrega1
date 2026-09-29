@@ -4,6 +4,13 @@ class Estudiante:
         self.nombre = nombre
         self.edad = edad
         self.carrera = carrera
+        self.tiene_multa = False
+
+    def set_tiene_multa(self, tiene_multa):
+        self.tiene_multa = tiene_multa
+
+    def get_tiene_multa(self):
+        return self.tiene_multa
 
     def mostrar_informacion(self):
         return f"Nombre: {self.nombre}, Edad: {self.edad}, Carrera: {self.carrera}"

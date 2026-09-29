@@ -1,55 +1,32 @@
+from domain.categorias.categoria_equipo import CategoriaEquipo
 
 
+class Equipo:
+    """Entidad que representa un equipo físico del laboratorio."""
 
-class Equipo():
-    ESTADOS = ["EN_MANTENIMIENTO", "DISPONIBLE", "PRESTADO"]
-    CATEGORIAS = ["PROYECTOR", "PORTATIL", "CAMARA", "KIT_ROBOTICA", "AUDIO"]
-    CUOTAS_POR_CATEGORIA = {
-        "PROYECTOR": 15000,
-        "PORTATIL": 12000,
-        "CAMARA": 8000,
-        "KIT_ROBOTICA": 10000,
-        "AUDIO": 5000,
-    }
-    PLAZOS_POR_CATEGORIA = {
-        "PROYECTOR": 7,
-        "PORTATIL": 10,
-        "CAMARA": 15,
-        "KIT_ROBOTICA": 12,
-        "AUDIO": 20,
-    }
+    ESTADOS = ["DISPONIBLE", "PRESTADO", "EN_MANTENIMIENTO"]
 
-    def __init__(self, nombre, categoria):
+    def __init__(self, nombre: str, categoria: CategoriaEquipo):
         self.id = None
         self.nombre = nombre
-        self.categoria = categoria.upper()
+        self.categoria = categoria
         self.estado = "DISPONIBLE"
-        self.cuota_diaria = self._obtener_cuota_por_categoria(self.categoria)
-        self.plazo_maximo_dias = self._obtener_plazo_por_categoria(self.categoria)
 
-    def _obtener_cuota_por_categoria(self, categoria):
-        return self.CUOTAS_POR_CATEGORIA.get(categoria, 0)
+    # --- Transiciones de estado (R2, R6) ---
 
-    def _obtener_plazo_por_categoria(self, categoria):
-        return self.PLAZOS_POR_CATEGORIA.get(categoria, 0)
+    def marcar_prestado(self):
+        self.estado = "PRESTADO"
 
-    @classmethod
-    def agregar_categoria(cls, categoria, cuota_diaria, plazo_maximo_dias):
-        categoria = categoria.upper()
-        cls.CUOTAS_POR_CATEGORIA[categoria] = cuota_diaria
-        cls.PLAZOS_POR_CATEGORIA[categoria] = plazo_maximo_dias
-        if categoria not in cls.CATEGORIAS:
-            cls.CATEGORIAS.append(categoria)
+    def marcar_disponible(self):
+        self.estado = "DISPONIBLE"
 
-    @classmethod
-    def actualizar_categoria(cls, categoria, cuota_diaria=None, plazo_maximo_dias=None):
-        categoria = categoria.upper()
-        if cuota_diaria is not None:
-            cls.CUOTAS_POR_CATEGORIA[categoria] = cuota_diaria
-        if plazo_maximo_dias is not None:
-            cls.PLAZOS_POR_CATEGORIA[categoria] = plazo_maximo_dias
-        if categoria not in cls.CATEGORIAS:
-            cls.CATEGORIAS.append(categoria)
+    def marcar_en_mantenimiento(self):
+        self.estado = "EN_MANTENIMIENTO"
+
+    def esta_disponible(self) -> bool:
+        return self.estado == "DISPONIBLE"
+
+    # --- Getters / Setters ---
 
     def get_id(self):
         return self.id
@@ -60,27 +37,25 @@ class Equipo():
     def get_nombre(self):
         return self.nombre
 
-    def set_estado(self, estado):
-        self.estado = estado
-
     def get_estado(self):
         return self.estado
 
+    def set_estado(self, estado):
+        """Usado solo por la capa de infraestructura al reconstruir desde BD."""
+        self.estado = estado
+
     def get_categoria(self):
         return self.categoria
-
-    def set_cuota_diaria(self, cuota):
-        self.cuota_diaria = cuota
-
-    def calcular_pago(self):
-        return self.cuota_diaria
 
     def mostrar_informacion(self):
         return {
             "id": self.id,
             "nombre": self.nombre,
-            "categoria": self.categoria,
+            "categoria": self.categoria.nombre,
             "estado": self.estado,
-            "cuota_diaria": self.cuota_diaria,
-            "plazo_maximo_dias": self.plazo_maximo_dias,
+            "cuota_diaria": self.categoria.cuota_diaria,
+            "plazo_maximo_dias": self.categoria.plazo_maximo_dias,
         }
+
+    def __str__(self):
+        return f"Equipo({self.nombre}, {self.categoria.nombre}, {self.estado})"

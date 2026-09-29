@@ -1,3 +1,3 @@
-from .adaptadores import NotificadorEmail, ProveedorFechaSistema
+from .adaptadores import NotificadorConsola, ProveedorFechaSistema, ProveedorFechaFija
 from .repositorios_memoria import RepositorioEquiposMemoria, RepositorioEstudiantesMemoria, RepositorioPrestamosMemoria
 from .repositorios_sql import RepositorioEquiposSQL, RepositorioEstudiantesSQL, RepositorioPrestamosSQL
