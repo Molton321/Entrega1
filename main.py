@@ -1,8 +1,8 @@
-import datetime
 import os
+import datetime
 
-# ─── Infraestructura (Composition Root: solo main.py conoce clases concretas) ──
-from infrastructure.adaptadores import NotificadorConsola, ProveedorFechaFija
+# ─── Infraestructura ────────────────────────────────────────────────────────────
+from infrastructure.adaptadores import NotificadorConsola, ProveedorFechaSistema, ProveedorFechaFija
 from infrastructure.repositorios_sql import (
     RepositorioEquiposSQL,
     RepositorioEstudiantesSQL,
@@ -14,218 +14,360 @@ from infrastructure.repositorios_memoria import (
     RepositorioPrestamosMemoria,
 )
 
-# ─── Categorías (Composition Root para OCP) ────────────────────────────────
+# ─── Categorías ─────────────────────────────────────────────────────────────────
 from domain.categorias.portatil import Portatil
 from domain.categorias.camara import Camara
 from domain.categorias.kit_robotica import KitRobotica
-from domain.categorias.proyector import Proyector          # CA6: línea de composición
+from domain.categorias.proyector import Proyector
 
-# ─── Dominio ────────────────────────────────────────────────────────────────
+# ─── Dominio ────────────────────────────────────────────────────────────────────
 from domain.equipo import Equipo
 from domain.estudiante import Estudiante
-from domain.prestamo import Prestamo
 from domain.excepciones import (
     LimitePrestamosExcedidoError,
     EquipoNoDisponibleError,
     EstudianteConMultaPendienteError,
 )
 
-# ─── Casos de uso ───────────────────────────────────────────────────────────
-from app.casos_uso import RegistrarPrestamo, RegistrarDevolucion
+# ─── Casos de uso ───────────────────────────────────────────────────────────────
+from app.casos_uso import (
+    RegistrarPrestamo,
+    RegistrarDevolucion,
+    GestionEquipos,
+    GestionEstudiantes,
+)
+
+NOMBRE_DB = "prestamos.db"
+
+CATEGORIAS = {
+    "1": Portatil(),
+    "2": Camara(),
+    "3": KitRobotica(),
+    "4": Proyector(),
+}
 
 
-# ─── Constantes del demo ────────────────────────────────────────────────────
-NOMBRE_DB = "prestamos_demo.db"
-FECHA_DEMO = datetime.date(2026, 10, 5)
-FECHA_DEVOLUCION_TARDIA = datetime.date(2026, 10, 6)   # CA3: devolución tardía
+# ══════════════════════════════════════════════════════════════════════════════
+# Helpers de pantalla
+# ══════════════════════════════════════════════════════════════════════════════
 
-# ─── LSP: cambiar solo esta línea para alternar entre persistencias ─────────
-#   "sqlite"  → repositorios reales con SQLite
-#   "memoria" → repositorios en memoria (demuestra LSP)
-MODO_PERSISTENCIA = "sqlite"
-# ────────────────────────────────────────────────────────────────────────────
+def limpiar():
+    os.system("clear" if os.name == "posix" else "cls")
 
 
-def construir_registro_categorias():
-    """Mapa nombre→objeto para que el repo SQL reconstruya categorías. OCP."""
-    return {
-        "PORTATIL": Portatil(),
-        "CAMARA": Camara(),
-        "KIT_ROBOTICA": KitRobotica(),
-        "PROYECTOR": Proyector(),
-    }
+def separador():
+    print("─" * 55)
 
 
-def construir_repositorios(registro):
-    """Inyecta la implementación según MODO_PERSISTENCIA (LSP)."""
-    if MODO_PERSISTENCIA == "sqlite":
-        repo_equipos = RepositorioEquiposSQL(NOMBRE_DB, registro)
-        repo_estudiantes = RepositorioEstudiantesSQL(NOMBRE_DB)
-        repo_prestamos = RepositorioPrestamosSQL(NOMBRE_DB, repo_equipos, repo_estudiantes)
-    else:
-        repo_equipos = RepositorioEquiposMemoria()
-        repo_estudiantes = RepositorioEstudiantesMemoria()
-        repo_prestamos = RepositorioPrestamosMemoria()
-    return repo_equipos, repo_estudiantes, repo_prestamos
+def titulo(texto):
+    separador()
+    print(f"  {texto}")
+    separador()
 
 
-def cargar_datos_iniciales(repo_equipos, repo_estudiantes, repo_prestamos):
-    """Carga el estado inicial en la BD para reproducir todos los casos de aceptación."""
-
-    # Estudiantes
-    ana = Estudiante("Ana", 20, "Ingeniería de Sistemas")
-    luis = Estudiante("Luis", 22, "Diseño Industrial")
-    luis.set_tiene_multa(True)                              # CA4: multa preexistente
-    carlos = Estudiante("Carlos", 21, "Electrónica")        # tomará CAMARA-02 en setup CA3
-    pedro = Estudiante("Pedro", 23, "Mecatrónica")          # CA5 y CA6
-
-    for est in [ana, luis, carlos, pedro]:
-        repo_estudiantes.guardar(est)
-
-    # Equipos
-    portatil_01 = Equipo("PORTATIL-01", Portatil())         # CA1
-    camara_01 = Equipo("CAMARA-01", Camara())               # setup silencioso CA2
-    camara_02 = Equipo("CAMARA-02", Camara())               # CA3
-    kit_01 = Equipo("KIT-01", KitRobotica())                # intento rechazado CA2
-    kit_02 = Equipo("KIT-02", KitRobotica())                # intento rechazado CA4, daño CA5
-    proyector_01 = Equipo("PROYECTOR-01", Proyector())      # CA6
-
-    for eq in [portatil_01, camara_01, camara_02, kit_01, kit_02, proyector_01]:
-        repo_equipos.guardar(eq)
-
-    # Setup CA3: Carlos tomó CAMARA-02 el 2026-10-01 (límite: 2026-10-03)
-    prestamo_ca3 = Prestamo(camara_02, carlos, datetime.date(2026, 10, 1))
-    camara_02.marcar_prestado()
-    repo_equipos.guardar(camara_02)
-    repo_prestamos.guardar(prestamo_ca3)
-
-    return {
-        "ana": ana, "luis": luis, "carlos": carlos, "pedro": pedro,
-        "portatil_01": portatil_01, "camara_01": camara_01,
-        "camara_02": camara_02, "kit_01": kit_01,
-        "kit_02": kit_02, "proyector_01": proyector_01,
-        "prestamo_ca3": prestamo_ca3,
-    }
+def pausa():
+    input("\n  [Enter para continuar]")
 
 
-def titulo_caso(numero, descripcion):
-    print(f"\n{'─' * 65}")
-    print(f"  CA{numero}: {descripcion}")
-    print(f"{'─' * 65}")
-
-
-def ejecutar_demo(repo_equipos, repo_estudiantes, repo_prestamos, datos):
-    notificador = NotificadorConsola()
-
-    registrar_prestamo = RegistrarPrestamo(
-        repo_prestamos, repo_equipos, repo_estudiantes,
-        notificador, ProveedorFechaFija(FECHA_DEMO),
-    )
-    registrar_devolucion = RegistrarDevolucion(
-        repo_prestamos, repo_equipos, repo_estudiantes,
-        notificador, ProveedorFechaFija(FECHA_DEMO),
-    )
-    registrar_devolucion_tardia = RegistrarDevolucion(
-        repo_prestamos, repo_equipos, repo_estudiantes,
-        notificador, ProveedorFechaFija(FECHA_DEVOLUCION_TARDIA),
-    )
-
-    ana_id = datos["ana"].get_id()
-    luis_id = datos["luis"].get_id()
-    pedro_id = datos["pedro"].get_id()
-    portatil_01_id = datos["portatil_01"].get_id()
-    camara_01_id = datos["camara_01"].get_id()
-    kit_01_id = datos["kit_01"].get_id()
-    kit_02_id = datos["kit_02"].get_id()
-    proyector_01_id = datos["proyector_01"].get_id()
-    prestamo_ca3_id = datos["prestamo_ca3"].get_id()
-
-    # ── CA1: Préstamo exitoso ─────────────────────────────────────────────
-    titulo_caso(1, "Ana pide PORTATIL-01 (sin préstamos previos)")
-    try:
-        prestamo = registrar_prestamo.ejecutar(portatil_01_id, ana_id)
-        print(f"  OK  Prestamo registrado | Fecha limite: {prestamo.fecha_limite}")
-    except (LimitePrestamosExcedidoError, EquipoNoDisponibleError, EstudianteConMultaPendienteError) as exc:
-        print(f"  ERROR  {exc}")
-
-    # Setup silencioso CA2: Ana ahora necesita 2 préstamos activos
-    registrar_prestamo.ejecutar(camara_01_id, ana_id)
-
-    # ── CA2: Límite de préstamos ──────────────────────────────────────────
-    titulo_caso(2, "Ana intenta un 3er prestamo (ya tiene 2 activos) → rechazado")
-    try:
-        registrar_prestamo.ejecutar(kit_01_id, ana_id)
-        print("  ERROR  Debio rechazarse pero no lo hizo")
-    except LimitePrestamosExcedidoError as exc:
-        print(f"  OK  Rechazado correctamente: {exc}")
-
-    # ── CA3: Devolución tardía con multa ─────────────────────────────────
-    titulo_caso(3, "CAMARA-02 devuelta el 2026-10-06 (3 dias tarde) → multa $24.000")
-    try:
-        prestamo = registrar_devolucion_tardia.ejecutar(prestamo_ca3_id, equipo_danado=False)
-        retraso = (FECHA_DEVOLUCION_TARDIA - prestamo.fecha_limite).days
-        print(f"  OK  Devolucion registrada")
-        print(f"      Fecha limite: {prestamo.fecha_limite} | Fecha devolucion: {FECHA_DEVOLUCION_TARDIA}")
-        print(f"      Retraso: {retraso} dia(s) | Multa generada: ${prestamo.multa:,}")
-    except Exception as exc:
-        print(f"  ERROR  {exc}")
-
-    # ── CA4: Estudiante con multa pendiente ───────────────────────────────
-    titulo_caso(4, "Luis (multa pendiente) intenta pedir equipo → rechazado")
-    try:
-        registrar_prestamo.ejecutar(kit_02_id, luis_id)
-        print("  ERROR  Debio rechazarse pero no lo hizo")
-    except EstudianteConMultaPendienteError as exc:
-        print(f"  OK  Rechazado correctamente: {exc}")
-
-    # ── CA5: Equipo dañado → EN_MANTENIMIENTO ────────────────────────────
-    titulo_caso(5, "Equipo devuelto con dano → EN_MANTENIMIENTO, no se puede prestar")
-    try:
-        prestamo_pedro = registrar_prestamo.ejecutar(kit_02_id, pedro_id)
-        print(f"  OK  Pedro tomo KIT-02 | Fecha limite: {prestamo_pedro.fecha_limite}")
-
-        registrar_devolucion.ejecutar(prestamo_pedro.get_id(), equipo_danado=True)
-        estado_actual = repo_equipos.buscar_por_id(kit_02_id).get_estado()
-        print(f"  OK  Devuelto con dano | Estado del equipo: {estado_actual}")
-
+def pedir_int(prompt):
+    while True:
         try:
-            registrar_prestamo.ejecutar(kit_02_id, pedro_id)
-            print("  ERROR  Debio rechazarse pero no lo hizo")
-        except EquipoNoDisponibleError as exc:
-            print(f"  OK  Prestamo rechazado correctamente: {exc}")
-    except Exception as exc:
-        print(f"  ERROR inesperado: {exc}")
+            return int(input(prompt))
+        except ValueError:
+            print("  ✗ Ingresa un número válido.")
 
-    # ── CA6: Nueva categoría PROYECTOR (OCP) ─────────────────────────────
-    titulo_caso(6, "PROYECTOR-01 (nueva categoria OCP) → funciona sin modificar dominio")
+
+def pedir_opcion(prompt, validas):
+    while True:
+        v = input(prompt).strip()
+        if v in validas:
+            return v
+        print(f"  ✗ Opción inválida. Elige entre: {', '.join(validas)}")
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# Construcción de repositorios
+# ══════════════════════════════════════════════════════════════════════════════
+
+def elegir_repositorio():
+    limpiar()
+    titulo("Sistema de Préstamo de Equipos")
+    print("  ¿Qué repositorio deseas usar?\n")
+    print("  1. Memoria  (datos de ejemplo precargados)")
+    print("  2. SQLite   (base de datos persistente)")
+    print()
+    opcion = pedir_opcion("  Opción: ", {"1", "2"})
+
+    if opcion == "1":
+        repo_eq  = RepositorioEquiposMemoria()
+        repo_est = RepositorioEstudiantesMemoria()
+        repo_pr  = RepositorioPrestamosMemoria(repo_eq, repo_est)
+        print("\n  ✓ Repositorio en memoria cargado con datos de ejemplo.")
+    else:
+        registro = {"PORTATIL": Portatil(), "CAMARA": Camara(),
+                    "KIT_ROBOTICA": KitRobotica(), "PROYECTOR": Proyector()}
+        repo_eq  = RepositorioEquiposSQL(NOMBRE_DB, registro)
+        repo_est = RepositorioEstudiantesSQL(NOMBRE_DB)
+        repo_pr  = RepositorioPrestamosSQL(NOMBRE_DB, repo_eq, repo_est)
+        print(f"\n  ✓ Conectado a SQLite → {NOMBRE_DB}")
+
+    pausa()
+    return repo_eq, repo_est, repo_pr
+
+
+def elegir_proveedor_fecha():
+    limpiar()
+    titulo("Configurar Fecha del Sistema")
+    hoy = datetime.date.today()
+    print(f"  Fecha real del sistema: {hoy}\n")
+    print("  1. Usar fecha del sistema  (siempre la fecha de hoy)")
+    print("  2. Usar fecha fija         (tú defines la fecha)")
+    print()
+    opcion = pedir_opcion("  Opción: ", {"1", "2"})
+
+    if opcion == "1":
+        proveedor = ProveedorFechaSistema()
+        print(f"\n  ✓ Proveedor: sistema  →  {proveedor.hoy()}")
+    else:
+        while True:
+            raw = input("  Ingresa la fecha (YYYY-MM-DD): ").strip()
+            try:
+                fecha = datetime.date.fromisoformat(raw)
+                proveedor = ProveedorFechaFija(fecha)
+                print(f"\n  ✓ Proveedor: fecha fija  →  {fecha}")
+                break
+            except ValueError:
+                print("  ✗ Formato inválido. Usa YYYY-MM-DD (ej: 2026-10-05)")
+
+    pausa()
+    return proveedor
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# Vistas de listado
+# ══════════════════════════════════════════════════════════════════════════════
+
+def mostrar_equipos(repo_eq):
+    equipos = repo_eq.listar_todos()
+    if not equipos:
+        print("  (sin equipos registrados)")
+        return
+    print(f"  {'ID':<4} {'Nombre':<16} {'Categoría':<14} {'Estado'}")
+    separador()
+    for e in equipos:
+        cat = e.get_categoria()
+        print(f"  {e.get_id()!s:<4} {e.get_nombre():<16} {cat.nombre:<14} {e.get_estado()}")
+
+
+def mostrar_estudiantes(repo_est):
+    estudiantes = repo_est.listar_todos()
+    if not estudiantes:
+        print("  (sin estudiantes registrados)")
+        return
+    print(f"  {'ID':<4} {'Nombre':<16} {'Edad':<6} {'Carrera':<20} Multa")
+    separador()
+    for est in estudiantes:
+        multa = "SÍ" if est.get_tiene_multa() else "No"
+        print(f"  {est.get_id()!s:<4} {est.nombre:<16} {est.edad:<6} {est.carrera:<20} {multa}")
+
+
+def mostrar_prestamos(repo_pr):
+    prestamos = repo_pr.listar_todos()
+    if not prestamos:
+        print("  (sin préstamos registrados)")
+        return
+    print(f"  {'ID':<4} {'Equipo':<16} {'Estudiante':<14} {'Estado':<10} {'F.Límite':<12} Multa")
+    separador()
+    for p in prestamos:
+        multa = f"${p.multa:,}" if p.multa else "-"
+        print(f"  {p.get_id()!s:<4} {p.equipo.get_nombre():<16} {p.estudiante.nombre:<14} "
+              f"{p.estado:<10} {str(p.fecha_limite):<12} {multa}")
+
+
+def mostrar_categorias():
+    print(f"  {'#':<3} {'Categoría':<14} {'Plazo':<8} Cuota/día")
+    separador()
+    for k, cat in CATEGORIAS.items():
+        print(f"  {k:<3} {cat.nombre:<14} {cat.plazo_maximo_dias} días   ${cat.cuota_diaria:,}")
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# Acciones de casos de uso
+# ══════════════════════════════════════════════════════════════════════════════
+
+def accion_registrar_prestamo(repo_eq, repo_est, repo_pr, proveedor_fecha):
+    titulo("Registrar Préstamo")
+    print("  Equipos disponibles:\n")
+    disponibles = [e for e in repo_eq.listar_todos() if e.esta_disponible()]
+    if not disponibles:
+        print("  ✗ No hay equipos disponibles.")
+        pausa()
+        return
+    print(f"  {'ID':<4} {'Nombre':<16} {'Categoría':<14} Plazo")
+    separador()
+    for e in disponibles:
+        cat = e.get_categoria()
+        print(f"  {e.get_id()!s:<4} {e.get_nombre():<16} {cat.nombre:<14} {cat.plazo_maximo_dias} días")
+
+    print()
+    equipo_id = pedir_int("  ID del equipo: ")
+
+    print("\n  Estudiantes:\n")
+    mostrar_estudiantes(repo_est)
+    print()
+    estudiante_id = pedir_int("  ID del estudiante: ")
+
+    caso = RegistrarPrestamo(repo_pr, repo_eq, repo_est,
+                             NotificadorConsola(), proveedor_fecha)
     try:
-        prestamo = registrar_prestamo.ejecutar(proyector_01_id, pedro_id)
-        cat = prestamo.equipo.get_categoria()
-        print(f"  OK  Prestamo de {cat.nombre} registrado")
-        print(f"      Plazo: {cat.plazo_maximo_dias} dias | Cuota: ${cat.cuota_diaria:,}/dia")
-        print(f"      Fecha limite: {prestamo.fecha_limite}")
-        print(f"      [Ningun archivo del dominio ni casos de uso fue modificado]")
-    except (LimitePrestamosExcedidoError, EquipoNoDisponibleError, EstudianteConMultaPendienteError) as exc:
-        print(f"  ERROR  {exc}")
+        prestamo = caso.ejecutar(equipo_id, estudiante_id)
+        print(f"\n  ✓ Préstamo #{prestamo.get_id()} registrado.")
+        print(f"    Equipo    : {prestamo.equipo.get_nombre()}")
+        print(f"    Estudiante: {prestamo.estudiante.nombre}")
+        print(f"    Fecha hoy : {prestamo.fecha_prestamo}")
+        print(f"    Límite    : {prestamo.fecha_limite}")
+    except (LimitePrestamosExcedidoError, EquipoNoDisponibleError,
+            EstudianteConMultaPendienteError) as exc:
+        print(f"\n  ✗ Préstamo rechazado: {exc}")
+    pausa()
 
+
+def accion_registrar_devolucion(repo_eq, repo_est, repo_pr, proveedor_fecha):
+    titulo("Registrar Devolución")
+    activos = [p for p in repo_pr.listar_todos() if p.esta_activo()]
+    if not activos:
+        print("  ✗ No hay préstamos activos.")
+        pausa()
+        return
+
+    print("  Préstamos activos:\n")
+    print(f"  {'ID':<4} {'Equipo':<16} {'Estudiante':<14} F.Límite")
+    separador()
+    for p in activos:
+        print(f"  {p.get_id()!s:<4} {p.equipo.get_nombre():<16} "
+              f"{p.estudiante.nombre:<14} {p.fecha_limite}")
+
+    print()
+    prestamo_id = pedir_int("  ID del préstamo a devolver: ")
+    danado = pedir_opcion("  ¿El equipo tiene daños? (s/n): ", {"s", "n"}) == "s"
+
+    caso = RegistrarDevolucion(repo_pr, repo_eq, repo_est,
+                               NotificadorConsola(), proveedor_fecha)
+    try:
+        prestamo = caso.ejecutar(prestamo_id, equipo_danado=danado)
+        print(f"\n  ✓ Devolución registrada.")
+        print(f"    Equipo    : {prestamo.equipo.get_nombre()} → {prestamo.equipo.get_estado()}")
+        print(f"    Fecha dev.: {prestamo.fecha_devolucion}")
+        if prestamo.multa > 0:
+            print(f"    ⚠  Multa generada: ${prestamo.multa:,}")
+        else:
+            print("    Sin multa.")
+    except Exception as exc:
+        print(f"\n  ✗ Error: {exc}")
+    pausa()
+
+
+def accion_registrar_equipo(repo_eq):
+    titulo("Registrar Equipo")
+    nombre = input("  Nombre del equipo: ").strip()
+    if not nombre:
+        print("  ✗ El nombre no puede estar vacío.")
+        pausa()
+        return
+
+    print("\n  Categorías disponibles:\n")
+    mostrar_categorias()
+    print()
+    clave = pedir_opcion("  Número de categoría: ", set(CATEGORIAS))
+    categoria = CATEGORIAS[clave]
+
+    equipo = Equipo(nombre, categoria)
+    GestionEquipos(repo_eq).registrar(equipo)
+    print(f"\n  ✓ Equipo '{nombre}' registrado con categoría {categoria.nombre}.")
+    pausa()
+
+
+def accion_registrar_estudiante(repo_est):
+    titulo("Registrar Estudiante")
+    nombre  = input("  Nombre  : ").strip()
+    edad    = pedir_int("  Edad    : ")
+    carrera = input("  Carrera : ").strip()
+
+    if not nombre or not carrera:
+        print("  ✗ Nombre y carrera son obligatorios.")
+        pausa()
+        return
+
+    est = Estudiante(nombre, edad, carrera)
+    GestionEstudiantes(repo_est).registrar(est)
+    print(f"\n  ✓ Estudiante '{nombre}' registrado (ID: {est.get_id()}).")
+    pausa()
+
+
+def accion_listar(repo_eq, repo_est, repo_pr):
+    while True:
+        limpiar()
+        titulo("Consultar")
+        print("  1. Equipos")
+        print("  2. Estudiantes")
+        print("  3. Préstamos")
+        print("  0. Volver")
+        print()
+        op = pedir_opcion("  Opción: ", {"0", "1", "2", "3"})
+        if op == "0":
+            break
+        limpiar()
+        if op == "1":
+            titulo("Equipos")
+            mostrar_equipos(repo_eq)
+        elif op == "2":
+            titulo("Estudiantes")
+            mostrar_estudiantes(repo_est)
+        elif op == "3":
+            titulo("Préstamos")
+            mostrar_prestamos(repo_pr)
+        pausa()
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# Menú principal
+# ══════════════════════════════════════════════════════════════════════════════
+
+def menu_principal(repo_eq, repo_est, repo_pr, proveedor_fecha):
+    while True:
+        limpiar()
+        titulo("Menú Principal")
+        print(f"  Fecha activa : {proveedor_fecha.hoy()}\n")
+        print("  1. Registrar préstamo")
+        print("  2. Registrar devolución")
+        print("  3. Registrar nuevo equipo")
+        print("  4. Registrar nuevo estudiante")
+        print("  5. Consultar datos")
+        print("  0. Salir")
+        print()
+        op = pedir_opcion("  Opción: ", {"0", "1", "2", "3", "4", "5"})
+
+        if op == "0":
+            print("\n  Hasta luego.\n")
+            break
+        limpiar()
+        if op == "1":
+            accion_registrar_prestamo(repo_eq, repo_est, repo_pr, proveedor_fecha)
+        elif op == "2":
+            accion_registrar_devolucion(repo_eq, repo_est, repo_pr, proveedor_fecha)
+        elif op == "3":
+            accion_registrar_equipo(repo_eq)
+        elif op == "4":
+            accion_registrar_estudiante(repo_est)
+        elif op == "5":
+            accion_listar(repo_eq, repo_est, repo_pr)
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# Punto de entrada
+# ══════════════════════════════════════════════════════════════════════════════
 
 if __name__ == "__main__":
-    # Limpiar BD de demos anteriores para empezar desde cero
-    if MODO_PERSISTENCIA == "sqlite" and os.path.exists(NOMBRE_DB):
-        os.remove(NOMBRE_DB)
-
-    print("\n" + "=" * 65)
-    print("  DEMO - Sistema de Prestamo de Equipos del Laboratorio")
-    print(f"  Fecha del sistema (fija): {FECHA_DEMO}")
-    print(f"  Persistencia: {MODO_PERSISTENCIA.upper()}")
-    print("=" * 65)
-
-    registro = construir_registro_categorias()
-    repo_equipos, repo_estudiantes, repo_prestamos = construir_repositorios(registro)
-    datos = cargar_datos_iniciales(repo_equipos, repo_estudiantes, repo_prestamos)
-
-    ejecutar_demo(repo_equipos, repo_estudiantes, repo_prestamos, datos)
-
-    print(f"\n{'=' * 65}")
-    print("  Demo completado exitosamente.")
-    print("=" * 65 + "\n")
+    repo_eq, repo_est, repo_pr = elegir_repositorio()
+    proveedor_fecha = elegir_proveedor_fecha()
+    menu_principal(repo_eq, repo_est, repo_pr, proveedor_fecha)
